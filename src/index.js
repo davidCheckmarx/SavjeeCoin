@@ -56,8 +56,6 @@ function startProcess(path, args) {
             createTransaction(data[0],  data[0],  +data[2])
             const cp = cps.find((cp) => cp.key.getPublic('hex')  === data[0])
             cp.process.stdin.write(`fromAddress: ${data[0]} \n toAddress: ${data[1]} \n amount: ${+data[2]} \n miner: ${keys[0].getPublic('hex')}\n`)
-            console.log("=================")
-            console.log("getBalanceOfAddress:", getBalanceOfAddress(data[0]))
         }
     });
     setupTransaction()
