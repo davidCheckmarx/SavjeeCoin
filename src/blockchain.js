@@ -192,7 +192,9 @@ class Blockchain {
     }
     
     // Making sure that the amount sent is not greater than existing balance
-    if (this.getBalanceOfAddress(transaction.fromAddress) < transaction.amount) {
+    // console.log("this.getBalanceOfAddress(transaction.fromAddress)", this.getBalanceOfAddress(transaction.fromAddress))
+    // console.log("transaction.amount", this.getBalanceOfAddress(transaction.fromAddress), transaction.amount)
+    if (this.getBalanceOfAddress(transaction.fromAddress) < transaction.amount && !transaction.fromAddress === '0' ) {
       throw new Error('Not enough balance');
     }
 
