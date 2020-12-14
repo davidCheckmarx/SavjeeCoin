@@ -1,13 +1,21 @@
 const childProcess = require('child_process');
+const { Blockchain, Transaction } = require('./blockchain');
 const EC = require('elliptic').ec;
 const ec = new EC('secp256k1');
+const {TRANSACTIONS} = require('./const');
 
 const port1 = 5001;
 const port2 = 5002;
 const port3 = 5003;
-const key1 = ec.genKeyPair();
-const key2 = ec.genKeyPair();
-const key3 = ec.genKeyPair();
+
+
+const keys = [
+    ec.genKeyPair(),
+    ec.genKeyPair(),
+    ec.genKeyPair()
+]
+let savjeeCoin = new Blockchain();
+const allSavjeeCoin = [savjeeCoin]
 
 function startProcess(path, args) {
     return new Promise((resolve, reject) => {
@@ -17,32 +25,76 @@ function startProcess(path, args) {
     });
 }
 
-function notifyTransaction(cp) {
-    cp.stdin.write('transaction');
-}
-
 (async function () {
-    let cps = [
-        await startProcess(require.resolve('./BC_Part_5 p2p/p2p'), [port1]),
-        await startProcess(require.resolve('./BC_Part_5 p2p/p2p'), [port2, port1]),
-        await startProcess(require.resolve('./BC_Part_5 p2p/p2p'), [port3, port2, port1])
+    let cps = [{
+            process: await startProcess(require.resolve('./BC_Part_5 p2p/p2p'), [port1]),
+            key: keys[0]
+        },
+        {
+            process:  await startProcess(require.resolve('./BC_Part_5 p2p/p2p'), [port2, port1]),
+            key: keys[1]
+        },
+        {
+            process: await startProcess(require.resolve('./BC_Part_5 p2p/p2p'), [port3, port2, port1]),
+            key: keys[2]
+        }
     ];
 
     cps.forEach((cp, i) => {
-        cp.stdout.on('data', d => {
+        cp.process.stdout.on('data', d => {
             d.toString().split('\n').slice(0, -1).forEach(l => {
-                process.stdout.write(`[${i + 1}] ${l}\n`);
+                process.stdout.write(`[${keys[i].getPublic('hex')}] ${l}\n`);
             });
         });
     });
 
+
+
     process.stdin.on('data', d => {
-        notifyTransaction(cps[+d.toString() - 1])
+        const data = d.toString().split(" ")
+        if(data.length === 3){
+            createTransaction(data[0],  data[0],  +data[2])
+            const cp = cps.find((cp) => cp.key.getPublic('hex')  === data[0])
+            cp.process.stdin.write(`fromAddress: ${data[0]} \n toAddress: ${data[1]} \n amount: ${+data[2]} \n miner: ${keys[0].getPublic('hex')}\n`)
+            console.log("=================")
+            console.log("getBalanceOfAddress:", getBalanceOfAddress(data[0]))
+        }
     });
+    setupTransaction()
 }());
 
-// cp1.stdout.on('data', d => {
-//     if (d.includes('transaction')) {
-//         // TODO: Mine
-//     }
-// });
+function setupTransaction() {
+    TRANSACTIONS.forEach(  (t) => {
+        const transaction = {
+            fromAddress: keys[t.fromAddress - 1].getPublic('hex'),
+            toAddress: keys[t.toAddress - 1].getPublic('hex'),
+            amount:30
+        }
+        console.log("=======================")
+        console.log("fromAddress: ", transaction.fromAddress)
+        console.log("toAddress: ", transaction.toAddress)
+        console.log("amount: ", transaction.amount)
+        console.log("miner: ", keys[0].getPublic('hex'))
+        console.log("=======================")
+        createTransaction(transaction.fromAddress,  transaction.toAddress,  transaction.amount)
+    })
+}
+
+
+function createTransaction(fromAddress, toAddress, amount) {
+    const myKey = keys.find((k) => k.getPublic('hex')  === fromAddress)
+    if(!myKey) return
+    if(savjeeCoin.chain.length === 4) {
+        savjeeCoin = new Blockchain()
+        allSavjeeCoin.push(savjeeCoin)
+    }
+    const transaction = new Transaction( fromAddress,  toAddress,  amount);
+    transaction.signTransaction(myKey);
+    savjeeCoin.addTransaction(transaction);
+    savjeeCoin.minePendingTransactions(keys[0].getPublic('hex'));
+}
+
+const getBalanceOfAddress = (publicKey) =>
+    allSavjeeCoin.reduce((prev, next) => next.getBalanceOfAddress(publicKey) + prev, 0)
+
+
