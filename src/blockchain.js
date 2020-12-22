@@ -1,7 +1,10 @@
 const crypto = require('crypto');
 const EC = require('elliptic').ec;
 const ec = new EC('secp256k1');
+const { BloomFilter } = require('bloom-filters');
+const { MerkleTree } = require('merkletreejs');
 const debug = require('debug')('savjeecoin:blockchain');
+const SHA256 = require('crypto-js/sha256');
 
 class Transaction {
   /**
@@ -38,7 +41,7 @@ class Transaction {
     if (signingKey.getPublic('hex') !== this.fromAddress) {
       throw new Error('You cannot sign transactions for other wallets!');
     }
-    
+
 
     // Calculate the hash of this transaction, sign it with the key
     // and store it inside the transaction obect
@@ -81,6 +84,14 @@ class Block {
     this.transactions = transactions;
     this.nonce = 0;
     this.hash = this.calculateHash();
+    const hashes = [];
+    this.filter = new BloomFilter(5, 2);
+    this.transactions.forEach(t => {
+      const h = t.calculateHash();
+      hashes.push(h);
+      this.filter.add(h);
+    });
+    this.tree = new MerkleTree(hashes, SHA256);
   }
 
   /**
@@ -123,6 +134,21 @@ class Block {
 
     return true;
   }
+
+  /**
+   * Check if transaction belongs to the block
+   * @param {Transaction} t
+   * @returns {boolean}
+   */
+  hasTransaction(t) {
+    const h = t.calculateHash();
+    if (!this.filter.has(h)) {
+      return false;
+    }
+
+    const proof = this.tree.getProof(h);
+    return this.tree.verify(proof, h, this.tree.getRoot());
+  }
 }
 
 class Blockchain {
@@ -131,6 +157,7 @@ class Blockchain {
     this.difficulty = 2;
     this.pendingTransactions = [];
     this.miningReward = 100;
+    this.maxTransactionsInBlock = 5;
   }
 
   /**
@@ -158,16 +185,20 @@ class Blockchain {
    * @param {string} miningRewardAddress
    */
   minePendingTransactions(miningRewardAddress) {
-    const rewardTx = new Transaction(null, miningRewardAddress, this.miningReward);
-    this.pendingTransactions.push(rewardTx);
+    if (this.pendingTransactions.length < this.maxTransactionsInBlock - 1) {
+      return;
+    }
 
-    const block = new Block(Date.now(), this.pendingTransactions, this.getLatestBlock().hash);
+    const transactionsToMine = this.pendingTransactions.splice(0, this.maxTransactionsInBlock - 1);
+    const rewardTx = new Transaction(null, miningRewardAddress, this.miningReward);
+    transactionsToMine.push(rewardTx);
+
+    const block = new Block(Date.now(), transactionsToMine, this.getLatestBlock().hash);
     block.mineBlock(this.difficulty);
 
     debug('Block successfully mined!');
     this.chain.push(block);
-
-    this.pendingTransactions = [];
+    return this.minePendingTransactions(miningRewardAddress);
   }
 
   /**
@@ -186,11 +217,11 @@ class Blockchain {
     if (!transaction.isValid()) {
       throw new Error('Cannot add invalid transaction to chain');
     }
-    
+
     if (transaction.amount <= 0) {
       throw new Error('Transaction amount should be higher than 0');
     }
-    
+
     // Making sure that the amount sent is not greater than existing balance
     // console.log("this.getBalanceOfAddress(transaction.fromAddress)", this.getBalanceOfAddress(transaction.fromAddress))
     // console.log("transaction.amount", this.getBalanceOfAddress(transaction.fromAddress), transaction.amount)
@@ -280,6 +311,20 @@ class Blockchain {
     }
 
     return true;
+  }
+
+  /**
+   * Check of transaction is mined
+   * @param {Transaction} t
+   */
+  isTransactionMined(t) {
+    for (const block of this.chain) {
+      if (block.hasTransaction(t)) {
+        return true
+      }
+    }
+
+    return false;
   }
 }
 

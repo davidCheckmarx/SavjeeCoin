@@ -13,9 +13,8 @@ const keys = [
     ec.genKeyPair(),
     ec.genKeyPair(),
     ec.genKeyPair()
-]
-let savjeeCoin = new Blockchain();
-const allSavjeeCoin = [savjeeCoin]
+];
+const blockchain = new Blockchain();
 
 function startProcess(path, args) {
     return new Promise((resolve, reject) => {
@@ -24,6 +23,56 @@ function startProcess(path, args) {
         cp.once('error', reject)
     });
 }
+
+function createTransaction(fromAddress, toAddress, amount) {
+    const myKey = keys.find((k) => k.getPublic('hex')  === fromAddress);
+    if(!myKey) return;
+    const transaction = new Transaction( fromAddress,  toAddress,  amount);
+    transaction.signTransaction(myKey);
+    blockchain.addTransaction(transaction);
+    return transaction;
+}
+
+function setupTransactions() {
+    const signedTransactions = TRANSACTIONS.map(  (t) => {
+        const transaction = {
+            fromAddress: keys[t.fromAddress - 1].getPublic('hex'),
+            toAddress: keys[t.toAddress - 1].getPublic('hex'),
+            amount: t.amount
+        };
+        console.log("=======================");
+        console.log("fromAddress: ", transaction.fromAddress);
+        console.log("toAddress: ", transaction.toAddress);
+        console.log("amount: ", transaction.amount);
+        console.log("=======================");
+        return createTransaction(transaction.fromAddress,  transaction.toAddress,  transaction.amount);
+    });
+
+    console.log("=======================");
+    console.log("mining, miner: ", keys[0].getPublic('hex'));
+    blockchain.minePendingTransactions(keys[0].getPublic('hex'));
+    console.log("=======================");
+
+    signedTransactions.forEach((t, i) => {
+        console.log("=======================");
+        console.log(`Transaction #${i + 1} for ${t.amount} is ${blockchain.isTransactionMined(t) ? 'mined' : 'pooled'}`);
+        console.log("=======================");
+    });
+
+    keys.forEach(k => {
+        const key = k.getPublic('hex');
+        console.log("=======================");
+        console.log(`balance of address ${key} is ${blockchain.getBalanceOfAddress(key)}`);
+        console.log("=======================");
+    })
+}
+
+function sleep() {
+    return new Promise(resolve => {
+        setTimeout(resolve, 3000);
+    });
+}
+
 
 (async function () {
     let cps = [{
@@ -48,54 +97,6 @@ function startProcess(path, args) {
         });
     });
 
-
-
-    process.stdin.on('data', d => {
-        const data = d.toString().split(" ")
-        if(data.length === 3){
-            createTransaction(data[0],  data[1],  +data[2])
-            const cp = cps.find((cp) => cp.key.getPublic('hex')  === data[0])
-            if(!cp) {
-                return
-            }
-            cp.process.stdin.write(`fromAddress: ${data[0]} \n toAddress: ${data[1]} \n amount: ${+data[2]} \n miner: ${keys[0].getPublic('hex')}\n`)
-        }
-    });
-    setupTransaction()
+    await sleep();
+    setupTransactions();
 }());
-
-function setupTransaction() {
-    TRANSACTIONS.forEach(  (t) => {
-        const transaction = {
-            fromAddress: keys[t.fromAddress - 1].getPublic('hex'),
-            toAddress: keys[t.toAddress - 1].getPublic('hex'),
-            amount:30
-        }
-        console.log("=======================")
-        console.log("fromAddress: ", transaction.fromAddress)
-        console.log("toAddress: ", transaction.toAddress)
-        console.log("amount: ", transaction.amount)
-        console.log("miner: ", keys[0].getPublic('hex'))
-        console.log("=======================")
-        createTransaction(transaction.fromAddress,  transaction.toAddress,  transaction.amount)
-    })
-}
-
-
-function createTransaction(fromAddress, toAddress, amount) {
-    const myKey = keys.find((k) => k.getPublic('hex')  === fromAddress)
-    if(!myKey) return
-    if(savjeeCoin.chain.length === 4) {
-        savjeeCoin = new Blockchain()
-        allSavjeeCoin.push(savjeeCoin)
-    }
-    const transaction = new Transaction( fromAddress,  toAddress,  amount);
-    transaction.signTransaction(myKey);
-    savjeeCoin.addTransaction(transaction);
-    savjeeCoin.minePendingTransactions(keys[0].getPublic('hex'));
-}
-
-const getBalanceOfAddress = (publicKey) =>
-    allSavjeeCoin.reduce((prev, next) => next.getBalanceOfAddress(publicKey) + prev, 0)
-
-

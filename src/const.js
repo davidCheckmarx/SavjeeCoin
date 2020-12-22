@@ -17,8 +17,8 @@ const TRANSACTIONS = [
     {fromAddress: 1, toAddress: 3, amount:18},
     {fromAddress: 2, toAddress: 3, amount:12},
     {fromAddress: 3, toAddress: 2, amount:14},
-]
+];
 
 module.exports = {
     TRANSACTIONS
-}
+};
